@@ -264,62 +264,34 @@ function transformarRegistro(registro, palavraPesquisada) {
   };
 }
 
-async function buscarPNCP({
-  palavra,
-  pagina = 1,
-  tamanhoPagina = 50,
-  status = "recebendo_proposta"
-}) {
-  const params = new URLSearchParams();
+async function buscarPNCP(palavra, pagina = 1, tamanho = 50) {
+  const url = new URL(`${PNCP_BASE}/`);
 
-  params.set("q", palavra);
-  params.set("tipos_documento", "edital");
-  params.set("ordenacao", "-data");
-  params.set("pagina", String(pagina));
-  params.set(
-    "tam_pagina",
-    String(Math.min(Math.max(tamanhoPagina, 10), 50))
-  );
-  params.set("status", status);
+  url.searchParams.set("q", palavra);
+  url.searchParams.set("tipos_documento", "edital");
+  url.searchParams.set("ordenacao", "-data");
+  url.searchParams.set("pagina", String(pagina));
+  url.searchParams.set("tam_pagina", String(tamanho));
+  url.searchParams.set("status", "recebendo_proposta");
 
-  const url = `${PNCP_BASE}/?${params.toString()}`;
-
-  const controller = new AbortController();
-
-  const timeout = setTimeout(() => {
-    controller.abort();
-  }, 15000);
-
-  try {
-    const resposta = await fetch(url, {
-      method: "GET",
-      headers: {
-        Accept: "application/json",
-        "User-Agent": "PNCP-Licitacoes-MCP/1.0"
-      },
-      signal: controller.signal
-    });
-
-    if (!resposta.ok) {
-      const erro = await resposta.text();
-
-      throw new Error(
-        `PNCP respondeu HTTP ${resposta.status}: ${erro.slice(0, 500)}`
-      );
+  const resposta = await fetch(url.toString(), {
+    method: "GET",
+    headers: {
+      "Accept": "application/json, text/plain, */*",
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
+      "Referer": "https://pncp.gov.br/",
+      "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7"
     }
+  });
 
-    return await resposta.json();
-  } catch (erro) {
-    if (erro?.name === "AbortError") {
-      throw new Error(
-        `Timeout ao consultar o mecanismo de busca do PNCP para "${palavra}".`
-      );
-    }
-
-    throw erro;
-  } finally {
-    clearTimeout(timeout);
+  if (!resposta.ok) {
+    throw new Error(
+      `PNCP retornou HTTP ${resposta.status} ${resposta.statusText}`
+    );
   }
+
+  return await resposta.json();
 }
 
 async function buscarUmaPalavra({
