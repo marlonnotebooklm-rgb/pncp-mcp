@@ -264,14 +264,18 @@ function transformarRegistro(registro, palavraPesquisada) {
   };
 }
 
-async function buscarPNCP(palavra, pagina = 1, tamanho = 50) {
+async function buscarPNCP({
+  palavra,
+  pagina = 1,
+  tamanhoPagina = 50
+}) {
   const url = new URL(`${PNCP_BASE}/`);
 
   url.searchParams.set("q", palavra);
   url.searchParams.set("tipos_documento", "edital");
   url.searchParams.set("ordenacao", "-data");
   url.searchParams.set("pagina", String(pagina));
-  url.searchParams.set("tam_pagina", String(tamanho));
+  url.searchParams.set("tam_pagina", String(tamanhoPagina));
   url.searchParams.set("status", "recebendo_proposta");
 
   const resposta = await fetch(url.toString(), {
@@ -293,7 +297,6 @@ async function buscarPNCP(palavra, pagina = 1, tamanho = 50) {
 
   return await resposta.json();
 }
-
 async function buscarUmaPalavra({
   palavra,
   dias,
