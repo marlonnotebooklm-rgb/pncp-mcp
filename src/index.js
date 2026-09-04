@@ -620,7 +620,54 @@ function criarServidor() {
 }
 
 export default {
-  fetch(request, env, ctx) {
+  async fetch(request, env, ctx) {
+    const url = new URL(request.url);
+
+    if (url.pathname === "/diagnostico-pncp") {
+      try {
+        const resposta = await fetch(
+          "https://pncp.gov.br/api/search/?q=coturno&tipos_documento=edital&ordenacao=-data&pagina=1&tam_pagina=10&status=recebendo_proposta",
+          {
+            method: "GET",
+            headers: {
+              "Accept": "application/json",
+              "User-Agent": "Mozilla/5.0"
+            }
+          }
+        );
+
+        const texto = await resposta.text();
+
+        return new Response(
+          JSON.stringify({
+            sucesso: resposta.ok,
+            status: resposta.status,
+            statusText: resposta.statusText,
+            resposta: texto.slice(0, 2000)
+          }, null, 2),
+          {
+            status: 200,
+            headers: {
+              "Content-Type": "application/json"
+            }
+          }
+        );
+      } catch (erro) {
+        return new Response(
+          JSON.stringify({
+            sucesso: false,
+            erro: erro?.message || String(erro)
+          }, null, 2),
+          {
+            status: 200,
+            headers: {
+              "Content-Type": "application/json"
+            }
+          }
+        );
+      }
+    }
+
     return createMcpHandler(criarServidor)(request, env, ctx);
   }
 };
