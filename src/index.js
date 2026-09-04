@@ -859,7 +859,8 @@ async function buscarUmaPalavra({
 
       vistos.add(identificador);
 
-      const detalhes = await buscarDetalhesContratacao(registro);
+     const detalhes =
+  await buscarDetalhesContratacao(registro);
 
 if (detalhes) {
   registro.data_abertura_proposta =
@@ -884,6 +885,26 @@ if (detalhes) {
   registro.link_sistema_origem =
     detalhes.linkSistemaOrigem ||
     null;
+}
+
+/* ================================
+   CONSULTA DOS ITENS DA CONTRATAÇÃO
+   ================================ */
+
+const itensBrutos =
+  await buscarItensContratacao(registro);
+
+const analiseItens =
+  analisarItensContratacao(itensBrutos);
+
+registro.itens =
+  analiseItens.itens;
+
+registro.tipo_participacao =
+  analiseItens.tipoParticipacao;
+
+registro.itens_encontrados =
+  analiseItens.itensEncontrados;
 }
 
 const item = transformarRegistro(registro, palavra);
