@@ -128,9 +128,9 @@ function dataYYYYMMDD(data) {
 
 function obterDataPublicacao(registro) {
   return (
-    registro.data_publicacao_pncp ||
     registro.data_atualizacao_pncp ||
     registro.createdAt ||
+    registro.data_publicacao_pncp ||
     null
   );
 }
