@@ -176,6 +176,101 @@ function ufCompativel(registro, uf) {
   );
 }
 
+function classificarRelevancia(registro, palavraPesquisada) {
+  const titulo = normalizar(registro.title || "");
+  const descricao = normalizar(registro.description || "");
+  const texto = `${titulo} ${descricao}`;
+
+  const palavra = normalizar(palavraPesquisada);
+
+  let pontuacao = 0;
+  const motivos = [];
+
+  // A palavra aparece diretamente no título
+  if (titulo.includes(palavra)) {
+    pontuacao += 5;
+    motivos.push("palavra-chave encontrada no título");
+  }
+
+  // A palavra aparece na descrição/objeto
+  if (descricao.includes(palavra)) {
+    pontuacao += 3;
+    motivos.push("palavra-chave encontrada no objeto/descrição");
+  }
+
+  // Indicadores de contratação diretamente relacionados
+  const termosAltaRelevancia = [
+    "aquisicao",
+    "aquisição",
+    "fornecimento",
+    "compra",
+    "contratacao",
+    "contratação",
+    "registro de precos",
+    "registro de preços"
+  ];
+
+  for (const termo of termosAltaRelevancia) {
+    if (texto.includes(normalizar(termo))) {
+      pontuacao += 2;
+      motivos.push(`indício de aquisição: ${termo}`);
+      break;
+    }
+  }
+
+  // Termos que normalmente indicam relação operacional
+  const termosOperacionais = [
+    "policia",
+    "polícia",
+    "guarda municipal",
+    "bombeiro",
+    "seguranca publica",
+    "segurança pública",
+    "seguranca",
+    "segurança",
+    "defesa civil",
+    "salvamento",
+    "fardamento",
+    "operacional",
+    "militar",
+    "epi",
+    "epI",
+    "resgate",
+    "samu",
+    "tribunal",
+    "policia judicial",
+    "polícia judicial"
+  ];
+
+  let encontrouOperacional = false;
+
+  for (const termo of termosOperacionais) {
+    if (texto.includes(normalizar(termo))) {
+      encontrouOperacional = true;
+      break;
+    }
+  }
+
+  if (encontrouOperacional) {
+    pontuacao += 3;
+    motivos.push("contexto operacional compatível");
+  }
+
+  let nivel = "BAIXA";
+
+  if (pontuacao >= 8) {
+    nivel = "ALTA";
+  } else if (pontuacao >= 4) {
+    nivel = "MÉDIA";
+  }
+
+  return {
+    nivel,
+    pontuacao,
+    motivos
+  };
+}
+
 function transformarRegistro(registro, palavraPesquisada) {
   const objeto = registro.description || "";
 
@@ -202,64 +297,120 @@ function transformarRegistro(registro, palavraPesquisada) {
     ? `https://pncp.gov.br${registro.item_url}`
     : null;
 
+  const relevancia = classificarRelevancia(
+    registro,
+    palavraPesquisada
+  );
+
   return {
     titulo: registro.title || null,
-    numero: registro.numero || registro.numero_sequencial || null,
-    ano: registro.ano || null,
+
+    numero:
+      registro.numero ||
+      registro.numero_sequencial ||
+      null,
+
+    ano:
+      registro.ano ||
+      null,
 
     objeto,
 
     modalidade:
-      registro.modalidade_licitacao_nome || null,
+      registro.modalidade_licitacao_nome ||
+      null,
 
     modalidadeCodigo:
-      registro.modalidade_licitacao_id || null,
+      registro.modalidade_licitacao_id ||
+      null,
 
     orgao:
-      registro.orgao_nome || null,
+      registro.orgao_nome ||
+      null,
 
     cnpj:
-      registro.orgao_cnpj || null,
+      registro.orgao_cnpj ||
+      null,
 
     unidade:
-      registro.unidade_nome || null,
+      registro.unidade_nome ||
+      null,
 
     municipio:
-      registro.municipio_nome || null,
+      registro.municipio_nome ||
+      null,
 
     uf:
-      registro.uf || null,
+      registro.uf ||
+      null,
 
     numeroControlePNCP:
-      registro.numero_controle_pncp || null,
+      registro.numero_controle_pncp ||
+      null,
 
     dataPublicacao:
-      registro.data_publicacao_pncp || registro.createdAt || null,
+      registro.data_publicacao_pncp ||
+      registro.createdAt ||
+      null,
 
     dataAtualizacao:
-      registro.data_atualizacao_pncp || null,
+      registro.data_atualizacao_pncp ||
+      null,
 
-    inicioVigencia:
-      registro.data_inicio_vigencia || null,
+dataAberturaProposta:
+  registro.data_abertura_proposta ||
+  null,
 
-    fimVigencia:
-      registro.data_fim_vigencia || null,
+dataEncerramentoProposta:
+  registro.data_encerramento_proposta ||
+  null,
+
+inicioVigencia:
+  registro.data_inicio_vigencia ||
+  null,
+
+fimVigencia:
+  registro.data_fim_vigencia ||
+  null,
+
+valorEstimado:
+  registro.valor_global ??
+  null,
+
+modoDisputa:
+  registro.modo_disputa_nome ||
+  null,
+
+linkSistemaOrigem:
+  registro.link_sistema_origem ||
+  null,
 
     situacao:
-      registro.situacao_nome || null,
+      registro.situacao_nome ||
+      null,
 
     cancelado:
       registro.cancelado ?? false,
 
     tipo:
-      registro.tipo_nome || null,
+      registro.tipo_nome ||
+      null,
 
     link:
       itemUrl,
 
     palavrasEncontradas,
 
-    dadosOriginais: registro
+    relevancia: relevancia.nivel,
+
+    pontuacaoRelevancia:
+      relevancia.pontuacao,
+
+    motivosRelevancia:
+      relevancia.motivos,
+
+    dadosOriginais:
+      registro
   };
 }
 
@@ -296,6 +447,54 @@ async function buscarPNCP({
 
   return await resposta.json();
 }
+
+async function buscarDetalhesContratacao(registro) {
+  const numeroControle = registro.numero_controle_pncp;
+
+  if (!numeroControle) return null;
+
+  const partes = String(numeroControle).split("-");
+
+  if (partes.length < 3) return null;
+
+  const cnpj = partes[0];
+  const ano = partes[partes.length - 1];
+  const sequencial = partes[2];
+
+  const url =
+    `https://pncp.gov.br/api/consulta/v1/orgaos/${cnpj}/compras/${ano}/${sequencial}`;
+
+  try {
+    const resposta = await fetch(url, {
+      method: "GET",
+      headers: {
+        "Accept": "application/json, text/plain, */*",
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
+        "Referer": "https://pncp.gov.br/",
+        "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7"
+      }
+    });
+
+    if (!resposta.ok) {
+      console.error(
+        `Erro ao buscar detalhes ${numeroControle}: HTTP ${resposta.status}`
+      );
+      return null;
+    }
+
+    return await resposta.json();
+
+  } catch (erro) {
+    console.error(
+      `Erro ao buscar detalhes ${numeroControle}:`,
+      erro?.message || String(erro)
+    );
+
+    return null;
+  }
+}
+
 async function buscarUmaPalavra({
   palavra,
   dias = 7,
@@ -345,9 +544,35 @@ async function buscarUmaPalavra({
 
       vistos.add(identificador);
 
-      const item = transformarRegistro(registro, palavra);
+      const detalhes = await buscarDetalhesContratacao(registro);
 
-      resultados.push(item);
+if (detalhes) {
+  registro.data_abertura_proposta =
+    detalhes.dataAberturaProposta ||
+    registro.data_abertura_proposta ||
+    null;
+
+  registro.data_encerramento_proposta =
+    detalhes.dataEncerramentoProposta ||
+    registro.data_encerramento_proposta ||
+    null;
+
+  registro.valor_global =
+    detalhes.valorTotalEstimado ??
+    registro.valor_global ??
+    null;
+
+  registro.modo_disputa_nome =
+    detalhes.modoDisputaNome ||
+    null;
+
+  registro.link_sistema_origem =
+    detalhes.linkSistemaOrigem ||
+    null;
+}
+
+const item = transformarRegistro(registro, palavra);
+resultados.push(item);
 
       if (resultados.length >= limite) {
         break;
@@ -369,7 +594,327 @@ async function buscarUmaPalavra({
 
   return resultados;
 }
+function dividirEmBlocos(lista, quantidadeBlocos = 5) {
+  const blocos = Array.from(
+    { length: quantidadeBlocos },
+    () => []
+  );
 
+  lista.forEach((item, indice) => {
+    blocos[indice % quantidadeBlocos].push(item);
+  });
+
+  return blocos.filter((bloco) => bloco.length > 0);
+}
+
+function esperar(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function executarBloco({
+  palavras,
+  dias,
+  uf,
+  modalidade
+}) {
+  const resultados = [];
+
+  /*
+   * Executa as palavras do bloco de forma SEQUENCIAL.
+   *
+   * Isso evita disparar várias consultas simultaneamente
+   * contra o PNCP e reduz o risco de rate limit.
+   */
+  for (let i = 0; i < palavras.length; i++) {
+    const palavra = palavras[i];
+
+    try {
+      const resultadosPalavra =
+        await buscarUmaPalavra({
+          palavra,
+          dias,
+          uf,
+          modalidade,
+          limite: 100
+        });
+
+      resultados.push(
+        ...resultadosPalavra
+      );
+
+    } catch (erro) {
+      /*
+       * Se uma palavra falhar, o radar continua
+       * normalmente para a próxima.
+       */
+      console.error(
+        `Erro ao pesquisar "${palavra}":`,
+        erro?.message || String(erro)
+      );
+    }
+
+    /*
+     * Pequena pausa entre consultas.
+     *
+     * Não existe necessidade de esperar depois
+     * da última palavra do bloco.
+     */
+    if (i < palavras.length - 1) {
+      await esperar(500);
+    }
+  }
+
+  return resultados;
+}
+
+async function executarRadarCompleto({
+  dias = 7,
+  uf,
+  modalidade,
+  limite = 100
+}) {
+  /*
+   * Divide as 89 palavras em até 5 blocos.
+   */
+  const blocos =
+    dividirEmBlocos(PALAVRAS_CHAVE, 5);
+
+  const blocosConcluidos = [];
+
+  /*
+   * Executa os 5 blocos de forma SEQUENCIAL.
+   *
+   * Isso evita que o PNCP receba dezenas de
+   * requisições simultaneamente.
+   */
+  for (let indice = 0; indice < blocos.length; indice++) {
+    const palavras = blocos[indice];
+
+    console.log(
+      `Iniciando bloco ${indice + 1} de ${blocos.length}`
+    );
+
+    try {
+      const resultados =
+        await executarBloco({
+          palavras,
+          dias,
+          uf,
+          modalidade
+        });
+
+      blocosConcluidos.push({
+        bloco: indice + 1,
+        palavras,
+        resultados
+      });
+
+      console.log(
+        `Bloco ${indice + 1} concluído: ${resultados.length} resultados`
+      );
+
+    } catch (erro) {
+      /*
+       * Se um bloco inteiro apresentar erro,
+       * registramos e seguimos para o próximo.
+       */
+      console.error(
+        `Erro no bloco ${indice + 1}:`,
+        erro?.message || String(erro)
+      );
+
+      blocosConcluidos.push({
+        bloco: indice + 1,
+        palavras,
+        resultados: [],
+        erro: erro?.message || String(erro)
+      });
+    }
+
+    /*
+     * Pequena pausa entre blocos.
+     *
+     * Não espera depois do último bloco.
+     */
+    if (indice < blocos.length - 1) {
+      await esperar(3000);
+    }
+  }
+
+  /*
+   * Junta todos os resultados dos 5 blocos.
+   */
+  const todosResultados = [];
+
+  for (const bloco of blocosConcluidos) {
+    todosResultados.push(
+      ...bloco.resultados
+    );
+  }
+
+  /*
+   * Cruzamento e remoção de duplicidades.
+   */
+  const consolidados =
+    consolidarResultados(
+      todosResultados
+    );
+
+  /*
+   * Ordenação final.
+   */
+  const ordenados =
+    ordenarResultados(
+      consolidados
+    );
+
+  return {
+    blocosExecutados: blocos.length,
+
+    palavrasPesquisadas:
+      PALAVRAS_CHAVE.length,
+
+    resultadosBrutos:
+      todosResultados.length,
+
+    oportunidadesUnicas:
+      ordenados.length,
+
+    resultados:
+      ordenados.slice(0, limite)
+  };
+}
+function identificarOportunidade(item) {
+  return (
+    item.numeroControlePNCP ||
+    `${item.cnpj || ""}-${item.ano || ""}-${item.numero || ""}`
+  );
+}
+
+function classificarJanelaTemporal(item) {
+  const agora = new Date();
+
+const dataFim = item.dataEncerramentoProposta
+  ? new Date(item.dataEncerramentoProposta)
+  : null;
+
+  if (!dataFim || Number.isNaN(dataFim.getTime())) {
+    return {
+      janela: "DESCONHECIDA",
+      prioridadeTemporal: 0
+    };
+  }
+
+  const diferencaHoras =
+    (dataFim.getTime() - agora.getTime()) /
+    (1000 * 60 * 60);
+
+  if (diferencaHoras <= 24) {
+    return {
+      janela: "URGENTE",
+      prioridadeTemporal: 5
+    };
+  }
+
+  if (diferencaHoras <= 72) {
+    return {
+      janela: "PRÓXIMAS 72 HORAS",
+      prioridadeTemporal: 4
+    };
+  }
+
+  if (diferencaHoras <= 168) {
+    return {
+      janela: "PRÓXIMOS 7 DIAS",
+      prioridadeTemporal: 3
+    };
+  }
+
+  return {
+    janela: "ACIMA DE 7 DIAS",
+    prioridadeTemporal: 1
+  };
+}
+
+function consolidarResultados(resultados) {
+  const mapa = new Map();
+
+  for (const item of resultados) {
+    const identificador =
+      identificarOportunidade(item);
+
+    const existente =
+      mapa.get(identificador);
+
+    if (!existente) {
+      mapa.set(
+        identificador,
+        {
+          ...item,
+          palavrasEncontradas:
+            item.palavrasEncontradas || []
+        }
+      );
+
+      continue;
+    }
+
+    const palavrasExistentes =
+      new Set(
+        existente.palavrasEncontradas || []
+      );
+
+    for (const palavra of item.palavrasEncontradas || []) {
+      palavrasExistentes.add(palavra);
+    }
+
+    existente.palavrasEncontradas =
+      Array.from(palavrasExistentes);
+
+    if (
+      (item.pontuacaoRelevancia || 0) >
+      (existente.pontuacaoRelevancia || 0)
+    ) {
+      existente.pontuacaoRelevancia =
+        item.pontuacaoRelevancia;
+
+      existente.relevancia =
+        item.relevancia;
+
+      existente.motivosRelevancia =
+        item.motivosRelevancia;
+    }
+  }
+
+  return Array.from(mapa.values());
+}
+
+function ordenarResultados(resultados) {
+  return resultados
+    .map((item) => {
+      const temporal =
+        classificarJanelaTemporal(item);
+
+      return {
+        ...item,
+
+        janelaTemporal:
+          temporal.janela,
+
+        prioridadeTemporal:
+          temporal.prioridadeTemporal,
+
+        prioridadeFinal:
+          (item.pontuacaoRelevancia || 0) +
+          temporal.prioridadeTemporal
+      };
+    })
+    .sort(
+      (a, b) =>
+        b.prioridadeFinal -
+        a.prioridadeFinal
+    );
+}
 function criarServidor() {
   const server = new McpServer({
     name: "PNCP Licitações MCP",
@@ -479,51 +1024,35 @@ function criarServidor() {
       limite = 30
     }) => {
       try {
-        const termos = palavra_chave
-          ? [palavra_chave]
-          : PALAVRAS_CHAVE;
+       let respostaRadar;
 
-        const resultados = [];
-        const vistos = new Set();
+if (palavra_chave) {
+  const resultados = await buscarUmaPalavra({
+    palavra: palavra_chave,
+    dias,
+    uf,
+    modalidade,
+    limite
+  });
 
-        /*
-         * Quando o usuário fornece uma palavra específica,
-         * fazemos uma busca direta no mecanismo do PNCP.
-         *
-         * Quando não fornece, percorremos as palavras-chave
-         * do radar e consolidamos os resultados.
-         */
-        for (const termo of termos) {
-          const encontrados = await buscarUmaPalavra({
-            palavra: termo,
-            dias,
-            uf,
-            modalidade,
-            limite
-          });
-
-          for (const item of encontrados) {
-            const identificador =
-              item.numeroControlePNCP ||
-              `${item.cnpj}-${item.ano}-${item.numero}`;
-
-            if (vistos.has(identificador)) {
-              continue;
-            }
-
-            vistos.add(identificador);
-
-            resultados.push(item);
-
-            if (resultados.length >= limite) {
-              break;
-            }
-          }
-
-          if (resultados.length >= limite) {
-            break;
-          }
-        }
+  respostaRadar = {
+    blocosExecutados: 1,
+    palavrasPesquisadas: 1,
+    resultadosBrutos: resultados.length,
+    oportunidadesUnicas: resultados.length,
+    resultados: ordenarResultados(
+      consolidarResultados(resultados)
+    ).slice(0, limite)
+  };
+} else {
+  respostaRadar = await executarRadarCompleto({
+  dias,
+  uf,
+  modalidade,
+  limite
+});
+}
+          
 
         return {
           content: [
@@ -556,10 +1085,20 @@ function criarServidor() {
                     modalidade ??
                     "todas",
 
-                  resultadosEncontrados:
-                    resultados.length,
+                 resultadosEncontrados:
+  respostaRadar.oportunidadesUnicas,
 
-                  resultados
+blocosExecutados:
+  respostaRadar.blocosExecutados,
+
+palavrasPesquisadas:
+  respostaRadar.palavrasPesquisadas,
+
+resultadosBrutos:
+  respostaRadar.resultadosBrutos,
+
+resultados:
+  respostaRadar.resultados
                 },
                 null,
                 2
