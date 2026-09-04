@@ -905,7 +905,6 @@ registro.tipo_participacao =
 
 registro.itens_encontrados =
   analiseItens.itensEncontrados;
-}
 
 const item = transformarRegistro(registro, palavra);
 resultados.push(item);
