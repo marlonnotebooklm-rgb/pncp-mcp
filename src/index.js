@@ -1475,7 +1475,7 @@ export default {
     if (url.pathname === "/diagnostico-itens") {
   try {
     const resposta = await fetch(
-      "https://pncp.gov.br/api/consulta/v1/orgaos/03755477000175/compras/2026/84/itens",
+      "https://pncp.gov.br/api/pncp/v1/orgaos/03755477000175/compras/2026/84/itens",
       {
         method: "GET",
         headers: {
