@@ -298,10 +298,10 @@ async function buscarPNCP({
 }
 async function buscarUmaPalavra({
   palavra,
-  dias,
+  dias = 7,
   uf,
   modalidade,
-  limite
+  limite = 100
 }) {
   const resultados = [];
   const vistos = new Set();
@@ -334,8 +334,6 @@ async function buscarUmaPalavra({
         continue;
       }
 
-      const item = transformarRegistro(registro, palavra);
-
       const identificador =
         registro.numero_controle_pncp ||
         registro.id ||
@@ -346,6 +344,8 @@ async function buscarUmaPalavra({
       }
 
       vistos.add(identificador);
+
+      const item = transformarRegistro(registro, palavra);
 
       resultados.push(item);
 
