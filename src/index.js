@@ -495,9 +495,12 @@ function transformarRegistro(registro, palavraPesquisada) {
     : null;
 
   const relevancia = classificarRelevancia(
-    registro,
-    palavraPesquisada
-  );
+  registro,
+  palavraPesquisada
+);
+
+const relevanciaComercial =
+  relevancia.pontuacao;
 
   return {
     titulo: registro.title || null,
@@ -600,12 +603,14 @@ linkSistemaOrigem:
 
     relevancia: relevancia.nivel,
 
-    pontuacaoRelevancia:
-      relevancia.pontuacao,
+relevanciaComercial,
 
-    motivosRelevancia:
-      relevancia.motivos,
+pontuacaoRelevancia:
+  relevancia.pontuacao,
 
+motivosRelevancia:
+  relevancia.motivos,
+    
     dadosOriginais:
       registro
   };
@@ -1043,6 +1048,38 @@ const dataFim = item.dataEncerramentoProposta
   };
 }
 
+function classificarPrioridade(relevancia, urgencia) {
+  if (relevancia >= 16 && urgencia >= 4) {
+    return "CRÍTICA";
+  }
+
+  if (relevancia >= 16) {
+    return "ALTA";
+  }
+
+  if (relevancia >= 11 && urgencia >= 3) {
+    return "ALTA";
+  }
+
+  if (relevancia >= 11) {
+    return "MÉDIA";
+  }
+
+  if (relevancia >= 6 && urgencia >= 4) {
+    return "MÉDIA";
+  }
+
+  if (relevancia >= 6) {
+    return "BAIXA";
+  }
+
+  if (urgencia >= 4) {
+    return "BAIXA";
+  }
+
+  return "BAIXA";
+}
+
 function consolidarResultados(resultados) {
   const mapa = new Map();
 
@@ -1102,25 +1139,70 @@ function ordenarResultados(resultados) {
       const temporal =
         classificarJanelaTemporal(item);
 
+      const relevanciaComercial =
+        item.pontuacaoRelevancia || 0;
+
+      const urgenciaTemporal =
+        temporal.prioridadeTemporal || 0;
+
+      const prioridade =
+        classificarPrioridade(
+          relevanciaComercial,
+          urgenciaTemporal
+        );
+
       return {
         ...item,
+
+        relevanciaComercial,
+
+        urgenciaTemporal,
 
         janelaTemporal:
           temporal.janela,
 
         prioridadeTemporal:
-          temporal.prioridadeTemporal,
+          urgenciaTemporal,
 
-        prioridadeFinal:
-          (item.pontuacaoRelevancia || 0) +
-          temporal.prioridadeTemporal
+        prioridade:
+  prioridade,
+
+prioridadeFinal:
+  relevanciaComercial +
+  urgenciaTemporal
       };
     })
-    .sort(
-      (a, b) =>
-        b.prioridadeFinal -
-        a.prioridadeFinal
-    );
+    .sort((a, b) => {
+      const ordemPrioridade = {
+        "CRÍTICA": 4,
+        "ALTA": 3,
+        "MÉDIA": 2,
+        "BAIXA": 1
+      };
+
+      const diferencaPrioridade =
+        (ordemPrioridade[b.prioridade] || 0) -
+        (ordemPrioridade[a.prioridade] || 0);
+
+      if (diferencaPrioridade !== 0) {
+        return diferencaPrioridade;
+      }
+
+      if (
+        b.relevanciaComercial !==
+        a.relevanciaComercial
+      ) {
+        return (
+          b.relevanciaComercial -
+          a.relevanciaComercial
+        );
+      }
+
+      return (
+        b.urgenciaTemporal -
+        a.urgenciaTemporal
+      );
+    });
 }
 function criarServidor() {
   const server = new McpServer({
