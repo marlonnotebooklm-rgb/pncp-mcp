@@ -186,60 +186,87 @@ function classificarRelevancia(registro, palavraPesquisada) {
   let pontuacao = 0;
   const motivos = [];
 
-  // A palavra aparece diretamente no título
+  /*
+   * ============================================================
+   * 1. PRESENÇA DA PALAVRA PESQUISADA
+   * ============================================================
+   */
+
   if (titulo.includes(palavra)) {
-    pontuacao += 5;
-    motivos.push("palavra-chave encontrada no título");
+    pontuacao += 8;
+    motivos.push("produto/termo encontrado no título");
   }
 
-  // A palavra aparece na descrição/objeto
   if (descricao.includes(palavra)) {
-    pontuacao += 3;
-    motivos.push("palavra-chave encontrada no objeto/descrição");
+    pontuacao += 5;
+    motivos.push("produto/termo encontrado no objeto/descrição");
   }
 
-  // Indicadores de contratação diretamente relacionados
-  const termosAltaRelevancia = [
+
+  /*
+   * ============================================================
+   * 2. TERMOS DE AQUISIÇÃO
+   * ============================================================
+   */
+
+  const termosAquisicao = [
     "aquisicao",
-    "aquisição",
     "fornecimento",
     "compra",
     "contratacao",
-    "contratação",
     "registro de precos",
-    "registro de preços"
+    "registro de preços",
+    "licitacao",
+    "licitação",
+    "pregao",
+    "pregão",
+    "dispensa"
   ];
 
-  for (const termo of termosAltaRelevancia) {
+  for (const termo of termosAquisicao) {
     if (texto.includes(normalizar(termo))) {
-      pontuacao += 2;
-      motivos.push(`indício de aquisição: ${termo}`);
+      pontuacao += 3;
+      motivos.push(`contratação identificada: ${termo}`);
       break;
     }
   }
 
-  // Termos que normalmente indicam relação operacional
+
+  /*
+   * ============================================================
+   * 3. CONTEXTO DE SEGURANÇA / OPERAÇÃO
+   * ============================================================
+   */
+
   const termosOperacionais = [
     "policia",
     "polícia",
+    "policia militar",
+    "polícia militar",
+    "policia civil",
+    "polícia civil",
+    "policia judicial",
+    "polícia judicial",
     "guarda municipal",
-    "bombeiro",
+    "guarda civil municipal",
     "seguranca publica",
     "segurança pública",
     "seguranca",
     "segurança",
+    "bombeiro",
+    "corpo de bombeiros",
     "defesa civil",
     "salvamento",
-    "fardamento",
-    "operacional",
-    "militar",
-    "epi",
-    "epI",
     "resgate",
     "samu",
-    "tribunal",
-    "policia judicial",
-    "polícia judicial"
+    "militar",
+    "fardamento",
+    "operacional",
+    "epi",
+    "uniforme",
+    "uniformes",
+    "trânsito",
+    "transito"
   ];
 
   let encontrouOperacional = false;
@@ -252,15 +279,185 @@ function classificarRelevancia(registro, palavraPesquisada) {
   }
 
   if (encontrouOperacional) {
-    pontuacao += 3;
-    motivos.push("contexto operacional compatível");
+    pontuacao += 5;
+    motivos.push("contexto de segurança/uso operacional");
+  }
+
+
+  /*
+   * ============================================================
+   * 4. PRODUTOS DIRETAMENTE RELACIONADOS AO NOSSO SEGMENTO
+   * ============================================================
+   */
+
+  const produtosRelacionados = [
+    "coturno",
+    "bota tatica",
+    "bota tática",
+    "bota motociclista",
+    "bota bombeiro",
+    "combat shirt",
+    "calca militar",
+    "calça militar",
+    "gandola",
+    "fardamento",
+    "fardamento operacional",
+    "uniforme operacional",
+    "uniformes",
+    "colete",
+    "capa de colete",
+    "colete modular",
+    "coldre",
+    "porta carregador",
+    "porta algema",
+    "cinto de guarnicao",
+    "cinto de guarnição",
+    "cinto tatico",
+    "cinto tático",
+    "luva tatica",
+    "luva tática",
+    "luva motociclista",
+    "capacete",
+    "joelheira",
+    "cotoveleira",
+    "lanterna tatica",
+    "lanterna tática",
+    "mochila tatica",
+    "mochila tática",
+    "bandoleira",
+    "torniquete",
+    "shemagh",
+    "balaclava",
+    "boina",
+    "canivete",
+    "salvamento",
+    "salvamento em altura",
+    "salvamento aquatico",
+    "salvamento aquático",
+    "mergulho",
+    "mosquetao",
+    "mosquetão",
+    "polia",
+    "descensor",
+    "ascensor",
+    "macacao neoprene",
+    "macacão neoprene",
+    "tecido cordura",
+    "cordura"
+  ];
+
+  let encontrouProduto = false;
+
+  for (const produto of produtosRelacionados) {
+    if (texto.includes(normalizar(produto))) {
+      encontrouProduto = true;
+      break;
+    }
+  }
+
+  if (encontrouProduto) {
+    pontuacao += 4;
+    motivos.push("produto compatível com o segmento comercial");
+  }
+
+
+  /*
+   * ============================================================
+   * 5. PRODUTO + AQUISIÇÃO
+   * ============================================================
+   *
+   * Quando o objeto demonstra claramente que o produto está
+   * sendo adquirido, damos um bônus significativo.
+   */
+
+  if (
+    encontrouProduto &&
+    termosAquisicao.some((termo) =>
+      texto.includes(normalizar(termo))
+    )
+  ) {
+    pontuacao += 4;
+    motivos.push("produto relacionado diretamente a uma aquisição");
+  }
+
+
+  /*
+   * ============================================================
+   * 6. SEGURANÇA + PRODUTO
+   * ============================================================
+   *
+   * Exemplo:
+   * "Coturno para Guarda Civil Municipal"
+   *
+   * Isso é muito mais interessante comercialmente.
+   */
+
+  if (
+    encontrouProduto &&
+    encontrouOperacional
+  ) {
+    pontuacao += 4;
+    motivos.push("produto associado a órgão/atividade operacional");
+  }
+
+
+  /*
+   * ============================================================
+   * 7. PENALIZAÇÃO DE FALSOS POSITIVOS
+   * ============================================================
+   */
+
+  const termosFalsoPositivo = [
+    "papai noel",
+    "brinquedo",
+    "brinquedos",
+    "inflavel",
+    "inflável",
+    "decoracao",
+    "decoração",
+    "evento",
+    "festividade",
+    "festividades",
+    "show",
+    "musical",
+    "carnaval",
+    "festa junina",
+    "ornamentacao",
+    "ornamentação"
+  ];
+
+  let encontrouFalsoPositivo = false;
+
+  for (const termo of termosFalsoPositivo) {
+    if (texto.includes(normalizar(termo))) {
+      encontrouFalsoPositivo = true;
+      break;
+    }
+  }
+
+  if (encontrouFalsoPositivo) {
+    pontuacao -= 8;
+    motivos.push("possível falso positivo identificado");
+  }
+
+
+  /*
+   * ============================================================
+   * 8. CLASSIFICAÇÃO FINAL
+   * ============================================================
+   */
+
+  if (pontuacao < 0) {
+    pontuacao = 0;
   }
 
   let nivel = "BAIXA";
 
-  if (pontuacao >= 8) {
+  if (pontuacao >= 16) {
+    nivel = "ALTÍSSIMA";
+  } else if (pontuacao >= 11) {
     nivel = "ALTA";
-  } else if (pontuacao >= 4) {
+  } else if (pontuacao >= 6) {
     nivel = "MÉDIA";
   }
 
