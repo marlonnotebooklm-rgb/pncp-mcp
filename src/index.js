@@ -2,7 +2,7 @@ import { McpServer } from "@modelcontextprotocol/server";
 import { createMcpHandler } from "agents/mcp/server";
 import { z } from "zod";
 
-const PNCP_BASE = "https://pncp.gov.br/api/consulta";
+const PNCP_BASE = "https://pncp.gov.br/api/search";
 
 const PALAVRAS_CHAVE = [
   "combat shirt",
@@ -97,10 +97,11 @@ const PALAVRAS_CHAVE = [
 ];
 
 function normalizar(texto = "") {
-  return texto
+  return String(texto)
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase();
+    .toLowerCase()
+    .trim();
 }
 
 function encontrarPalavras(texto) {
@@ -111,191 +112,294 @@ function encontrarPalavras(texto) {
   );
 }
 
-function formatarData(data) {
-  const agora = new Date(data);
-  if (Number.isNaN(agora.getTime())) return null;
+function dataYYYYMMDD(data) {
+  const d = new Date(data);
 
-  const ano = agora.getFullYear();
-  const mes = String(agora.getMonth() + 1).padStart(2, "0");
-  const dia = String(agora.getDate()).padStart(2, "0");
-
-  return `${ano}${mes}${dia}`;
-}
-
-function extrairRegistros(dados) {
-  if (Array.isArray(dados)) return dados;
-
-  if (Array.isArray(dados?.content)) return dados.content;
-
-  if (Array.isArray(dados?.data)) return dados.data;
-
-  if (Array.isArray(dados?.results)) return dados.results;
-
-  return [];
-}
-
-function valor(obj, ...nomes) {
-  for (const nome of nomes) {
-    if (
-      obj &&
-      obj[nome] !== undefined &&
-      obj[nome] !== null &&
-      obj[nome] !== ""
-    ) {
-      return obj[nome];
-    }
+  if (Number.isNaN(d.getTime())) {
+    return null;
   }
 
-  return null;
+  const ano = d.getFullYear();
+  const mes = String(d.getMonth() + 1).padStart(2, "0");
+  const dia = String(d.getDate()).padStart(2, "0");
+
+  return `${ano}-${mes}-${dia}`;
 }
 
-async function buscarPropostasAbertas({
-  dataFinal,
-  uf,
-  modalidade,
-  pagina = 1,
-  tamanhoPagina = 50
-}) {
-  const params = new URLSearchParams();
-
-  params.set("dataFinal", dataFinal);
-  params.set("pagina", String(pagina));
-  params.set(
-    "tamanhoPagina",
-    String(Math.min(Math.max(tamanhoPagina, 10), 50))
+function obterDataPublicacao(registro) {
+  return (
+    registro.data_publicacao_pncp ||
+    registro.data_atualizacao_pncp ||
+    registro.createdAt ||
+    null
   );
-
-  if (modalidade !== undefined && modalidade !== null) {
-    params.set("codigoModalidadeContratacao", String(modalidade));
-  }
-
-  if (uf) {
-    params.set("uf", uf.toUpperCase());
-  }
-
-  const url = `${PNCP_BASE}/v1/contratacoes/proposta?${params.toString()}`;
-
-  const resposta = await fetch(url, {
-    method: "GET",
-    headers: {
-      Accept: "application/json"
-    }
-  });
-
-  if (!resposta.ok) {
-    const erro = await resposta.text();
-
-    throw new Error(
-      `PNCP respondeu HTTP ${resposta.status}: ${erro.slice(0, 500)}`
-    );
-  }
-
-  return resposta.json();
 }
 
-function transformarRegistro(registro) {
-  const objeto = valor(
-    registro,
-    "objetoCompra",
-    "objeto",
-    "objetoContratacao",
-    "descricao"
-  );
+function estaDentroDoPeriodo(registro, dias) {
+  const dataPublicacao = obterDataPublicacao(registro);
 
-  const numero = valor(
-    registro,
-    "numeroCompra",
-    "numeroContratacao",
-    "numeroEdital",
-    "numero"
-  );
+  if (!dataPublicacao) {
+    return true;
+  }
 
-  const modalidade = valor(
-    registro,
-    "modalidadeNome",
-    "nomeModalidade",
-    "modalidadeContratacaoNome"
-  );
+  const data = new Date(dataPublicacao);
 
-  const orgao = valor(
-    registro,
-    "orgaoEntidade",
-    "orgaoNome",
-    "nomeOrgao",
-    "razaoSocial"
-  );
+  if (Number.isNaN(data.getTime())) {
+    return true;
+  }
 
-  const municipio = valor(
-    registro,
-    "municipioNome",
-    "nomeMunicipio",
-    "municipio"
-  );
+  const agora = new Date();
 
-  const uf = valor(
-    registro,
-    "ufSigla",
-    "uf",
-    "siglaUf"
-  );
+  const limite = new Date(agora);
+  limite.setDate(limite.getDate() - (dias - 1));
 
-  const valorEstimado = valor(
-    registro,
-    "valorTotalEstimado",
-    "valorEstimado",
-    "valorTotal"
-  );
+  limite.setHours(0, 0, 0, 0);
 
-  const dataPublicacao = valor(
-    registro,
-    "dataPublicacaoPncp",
-    "dataPublicacao",
-    "dataInclusao"
-  );
+  return data >= limite;
+}
 
-  const dataAbertura = valor(
-    registro,
-    "dataAberturaProposta",
-    "dataAbertura"
-  );
+function modalidadeCompativel(registro, modalidade) {
+  if (modalidade === undefined || modalidade === null) {
+    return true;
+  }
 
-  const controlePncp = valor(
-    registro,
-    "numeroControlePNCP",
-    "numeroControlePncp"
+  return String(registro.modalidade_licitacao_id) === String(modalidade);
+}
+
+function ufCompativel(registro, uf) {
+  if (!uf) {
+    return true;
+  }
+
+  return (
+    String(registro.uf || "").toUpperCase() ===
+    String(uf).toUpperCase()
   );
+}
+
+function transformarRegistro(registro, palavraPesquisada) {
+  const objeto = registro.description || "";
 
   const textoBusca = [
-    objeto,
-    numero,
-    modalidade,
-    orgao,
-    municipio,
-    uf
+    registro.title,
+    registro.description,
+    registro.numero,
+    registro.numero_sequencial,
+    registro.numero_controle_pncp,
+    registro.orgao_nome,
+    registro.unidade_nome,
+    registro.municipio_nome,
+    registro.uf,
+    registro.modalidade_licitacao_nome
   ]
     .filter(Boolean)
     .join(" ");
 
+  const palavrasEncontradas = palavraPesquisada
+    ? [palavraPesquisada]
+    : encontrarPalavras(textoBusca);
+
+  const itemUrl = registro.item_url
+    ? `https://pncp.gov.br${registro.item_url}`
+    : null;
+
   return {
-    numero,
+    titulo: registro.title || null,
+    numero: registro.numero || registro.numero_sequencial || null,
+    ano: registro.ano || null,
+
     objeto,
-    modalidade,
-    orgao,
-    municipio,
-    uf,
-    valorEstimado,
-    dataPublicacao,
-    dataAbertura,
-    numeroControlePNCP: controlePncp,
-    palavrasEncontradas: encontrarPalavras(textoBusca),
+
+    modalidade:
+      registro.modalidade_licitacao_nome || null,
+
+    modalidadeCodigo:
+      registro.modalidade_licitacao_id || null,
+
+    orgao:
+      registro.orgao_nome || null,
+
+    cnpj:
+      registro.orgao_cnpj || null,
+
+    unidade:
+      registro.unidade_nome || null,
+
+    municipio:
+      registro.municipio_nome || null,
+
+    uf:
+      registro.uf || null,
+
+    numeroControlePNCP:
+      registro.numero_controle_pncp || null,
+
+    dataPublicacao:
+      registro.data_publicacao_pncp || registro.createdAt || null,
+
+    dataAtualizacao:
+      registro.data_atualizacao_pncp || null,
+
+    inicioVigencia:
+      registro.data_inicio_vigencia || null,
+
+    fimVigencia:
+      registro.data_fim_vigencia || null,
+
+    situacao:
+      registro.situacao_nome || null,
+
+    cancelado:
+      registro.cancelado ?? false,
+
+    tipo:
+      registro.tipo_nome || null,
+
+    link:
+      itemUrl,
+
+    palavrasEncontradas,
+
     dadosOriginais: registro
   };
+}
+
+async function buscarPNCP({
+  palavra,
+  pagina = 1,
+  tamanhoPagina = 50,
+  status = "recebendo_proposta"
+}) {
+  const params = new URLSearchParams();
+
+  params.set("q", palavra);
+  params.set("tipos_documento", "edital");
+  params.set("ordenacao", "-data");
+  params.set("pagina", String(pagina));
+  params.set(
+    "tam_pagina",
+    String(Math.min(Math.max(tamanhoPagina, 10), 50))
+  );
+  params.set("status", status);
+
+  const url = `${PNCP_BASE}/?${params.toString()}`;
+
+  const controller = new AbortController();
+
+  const timeout = setTimeout(() => {
+    controller.abort();
+  }, 15000);
+
+  try {
+    const resposta = await fetch(url, {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+        "User-Agent": "PNCP-Licitacoes-MCP/1.0"
+      },
+      signal: controller.signal
+    });
+
+    if (!resposta.ok) {
+      const erro = await resposta.text();
+
+      throw new Error(
+        `PNCP respondeu HTTP ${resposta.status}: ${erro.slice(0, 500)}`
+      );
+    }
+
+    return await resposta.json();
+  } catch (erro) {
+    if (erro?.name === "AbortError") {
+      throw new Error(
+        `Timeout ao consultar o mecanismo de busca do PNCP para "${palavra}".`
+      );
+    }
+
+    throw erro;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function buscarUmaPalavra({
+  palavra,
+  dias,
+  uf,
+  modalidade,
+  limite
+}) {
+  const resultados = [];
+  const vistos = new Set();
+
+  for (let pagina = 1; pagina <= 10; pagina++) {
+    const dados = await buscarPNCP({
+      palavra,
+      pagina,
+      tamanhoPagina: 50
+    });
+
+    const registros = Array.isArray(dados?.items)
+      ? dados.items
+      : [];
+
+    if (!registros.length) {
+      break;
+    }
+
+    for (const registro of registros) {
+      if (!estaDentroDoPeriodo(registro, dias)) {
+        continue;
+      }
+
+      if (!ufCompativel(registro, uf)) {
+        continue;
+      }
+
+      if (!modalidadeCompativel(registro, modalidade)) {
+        continue;
+      }
+
+      const item = transformarRegistro(registro, palavra);
+
+      const identificador =
+        registro.numero_controle_pncp ||
+        registro.id ||
+        `${registro.orgao_cnpj}-${registro.ano}-${registro.numero_sequencial}`;
+
+      if (vistos.has(identificador)) {
+        continue;
+      }
+
+      vistos.add(identificador);
+
+      resultados.push(item);
+
+      if (resultados.length >= limite) {
+        break;
+      }
+    }
+
+    if (resultados.length >= limite) {
+      break;
+    }
+
+    if (registros.length < 50) {
+      break;
+    }
+
+    if (pagina * 50 >= Number(dados?.total || 0)) {
+      break;
+    }
+  }
+
+  return resultados;
 }
 
 function criarServidor() {
   const server = new McpServer({
     name: "PNCP Licitações MCP",
-    version: "1.0.0"
+    version: "2.0.0"
   });
 
   server.registerTool(
@@ -343,13 +447,14 @@ function criarServidor() {
     "buscar_licitacoes",
     {
       description:
-        "Pesquisa contratações do PNCP com recebimento de propostas aberto e filtra localmente pelos termos de interesse do radar.",
+        "Pesquisa editais e avisos de contratação direta no mecanismo de busca do PNCP, priorizando contratações que estão recebendo propostas. Pode pesquisar uma palavra específica ou todas as palavras-chave do radar, com filtros de período, UF, modalidade e limite de resultados.",
+
       inputSchema: {
         palavra_chave: z
           .string()
           .optional()
           .describe(
-            "Termo específico para pesquisar. Se omitido, usa todas as palavras-chave do radar."
+            "Termo específico para pesquisar no PNCP. Se omitido, executa o radar utilizando todas as palavras-chave cadastradas."
           ),
 
         dias: z
@@ -360,21 +465,23 @@ function criarServidor() {
           .optional()
           .default(1)
           .describe(
-            "Quantidade de dias anteriores usados como referência. Padrão: 1."
+            "Quantidade de dias recentes considerados. Padrão: 1."
           ),
 
         uf: z
           .string()
           .length(2)
           .optional()
-          .describe("UF para restringir a busca, por exemplo GO, SP ou DF."),
+          .describe(
+            "UF para restringir os resultados, por exemplo GO, SP ou DF."
+          ),
 
         modalidade: z
           .number()
           .int()
           .optional()
           .describe(
-            "Código da modalidade de contratação no PNCP, quando desejado."
+            "Código da modalidade de contratação do PNCP. Exemplos comuns: 6 = Pregão Eletrônico; 8 = Dispensa."
           ),
 
         limite: z
@@ -384,9 +491,12 @@ function criarServidor() {
           .max(100)
           .optional()
           .default(30)
-          .describe("Quantidade máxima de resultados retornados.")
+          .describe(
+            "Quantidade máxima de resultados retornados."
+          )
       }
     },
+
     async ({
       palavra_chave,
       dias = 1,
@@ -395,79 +505,50 @@ function criarServidor() {
       limite = 30
     }) => {
       try {
-        const hoje = new Date();
-
         const termos = palavra_chave
           ? [palavra_chave]
           : PALAVRAS_CHAVE;
 
-        const termoNormalizado = termos.map(normalizar);
-
         const resultados = [];
         const vistos = new Set();
 
-        for (let deslocamento = 0; deslocamento < dias; deslocamento++) {
-          const data = new Date(hoje);
-          data.setDate(data.getDate() - deslocamento);
+        /*
+         * Quando o usuário fornece uma palavra específica,
+         * fazemos uma busca direta no mecanismo do PNCP.
+         *
+         * Quando não fornece, percorremos as palavras-chave
+         * do radar e consolidamos os resultados.
+         */
+        for (const termo of termos) {
+          const encontrados = await buscarUmaPalavra({
+            palavra: termo,
+            dias,
+            uf,
+            modalidade,
+            limite
+          });
 
-          const dataFinal = formatarData(data);
+          for (const item of encontrados) {
+            const identificador =
+              item.numeroControlePNCP ||
+              `${item.cnpj}-${item.ano}-${item.numero}`;
 
-          for (let pagina = 1; pagina <= 5; pagina++) {
-            const dados = await buscarPropostasAbertas({
-              dataFinal,
-              uf,
-              modalidade,
-              pagina,
-              tamanhoPagina: 50
-            });
-
-            const registros = extrairRegistros(dados);
-
-            if (!registros.length) break;
-
-            for (const registro of registros) {
-              const item = transformarRegistro(registro);
-
-              const texto = normalizar(
-                [
-                  item.objeto,
-                  item.numero,
-                  item.modalidade,
-                  item.orgao,
-                  item.municipio,
-                  item.uf
-                ]
-                  .filter(Boolean)
-                  .join(" ")
-              );
-
-              const correspondencias = termos.filter((termo, indice) =>
-                texto.includes(termoNormalizado[indice])
-              );
-
-              if (!correspondencias.length) continue;
-
-              const identificador =
-                item.numeroControlePNCP ||
-                `${item.numero || ""}-${item.orgao || ""}-${item.objeto || ""}`;
-
-              if (vistos.has(identificador)) continue;
-
-              vistos.add(identificador);
-
-              item.palavrasEncontradas = correspondencias;
-
-              resultados.push(item);
-
-              if (resultados.length >= limite) break;
+            if (vistos.has(identificador)) {
+              continue;
             }
 
-            if (resultados.length >= limite) break;
+            vistos.add(identificador);
 
-            if (registros.length < 50) break;
+            resultados.push(item);
+
+            if (resultados.length >= limite) {
+              break;
+            }
           }
 
-          if (resultados.length >= limite) break;
+          if (resultados.length >= limite) {
+            break;
+          }
         }
 
         return {
@@ -477,10 +558,33 @@ function criarServidor() {
               text: JSON.stringify(
                 {
                   sucesso: true,
-                  fonte: "API oficial de consulta do PNCP",
-                  filtro: palavra_chave || "todas as palavras-chave",
-                  uf: uf || "todas",
-                  resultadosEncontrados: resultados.length,
+
+                  fonte:
+                    "Mecanismo de busca do Portal Nacional de Contratações Públicas (PNCP)",
+
+                  endpoint:
+                    "https://pncp.gov.br/api/search/",
+
+                  status:
+                    "recebendo_proposta",
+
+                  filtro:
+                    palavra_chave ||
+                    "todas as palavras-chave do radar",
+
+                  dias,
+
+                  uf:
+                    uf ||
+                    "todas",
+
+                  modalidade:
+                    modalidade ??
+                    "todas",
+
+                  resultadosEncontrados:
+                    resultados.length,
+
                   resultados
                 },
                 null,
@@ -497,7 +601,9 @@ function criarServidor() {
               text: JSON.stringify(
                 {
                   sucesso: false,
-                  erro: erro.message
+                  erro:
+                    erro?.message ||
+                    "Erro desconhecido ao consultar o PNCP."
                 },
                 null,
                 2
