@@ -150,10 +150,9 @@ function estaDentroDoPeriodo(registro, dias) {
 
   const agora = new Date();
 
-  const limite = new Date(agora);
-  limite.setDate(limite.getDate() - (dias - 1));
-
-  limite.setHours(0, 0, 0, 0);
+  const limite = new Date(
+    agora.getTime() - dias * 24 * 60 * 60 * 1000
+  );
 
   return data >= limite;
 }
