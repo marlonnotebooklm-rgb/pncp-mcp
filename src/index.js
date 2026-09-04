@@ -455,11 +455,21 @@ async function buscarDetalhesContratacao(registro) {
 
   const partes = String(numeroControle).split("-");
 
-  if (partes.length < 3) return null;
+if (partes.length < 3) return null;
 
-  const cnpj = partes[0];
-  const ano = partes[partes.length - 1];
-  const sequencial = partes[2];
+const cnpj = partes[0];
+
+const sequencialAno = partes[2];
+
+const partesSequencialAno =
+  sequencialAno.split("/");
+
+if (partesSequencialAno.length !== 2) {
+  return null;
+}
+
+const sequencial = partesSequencialAno[0];
+const ano = partesSequencialAno[1];
 
   const url =
     `https://pncp.gov.br/api/consulta/v1/orgaos/${cnpj}/compras/${ano}/${sequencial}`;
