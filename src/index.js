@@ -1632,6 +1632,119 @@ export default {
     );
   }
 }
+    if (url.pathname === "/diagnostico-lotes") {
+  try {
+    const resposta = await fetch(
+      "https://pncp.gov.br/api/pncp/v1/orgaos/01612744000120/compras/2026/75/itens",
+      {
+        method: "GET",
+        headers: {
+          "Accept": "application/json, text/plain, */*",
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
+          "Referer": "https://pncp.gov.br/",
+          "Accept-Language":
+            "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7"
+        }
+      }
+    );
+
+    const dados = await resposta.json();
+
+    const itens = Array.isArray(dados)
+      ? dados
+      : [];
+
+    const analisados = itens.map((item) => {
+      const descricao =
+        String(item.descricao || "");
+
+      const texto =
+        normalizar(descricao);
+
+      let tipo = "ITEM INDIVIDUAL";
+      let identificacao = null;
+
+      const matchLote = texto.match(
+        /\b(lote|grupo)\s*([a-z0-9ivx\-]+)/i
+      );
+
+      if (matchLote) {
+        tipo = "LOTE/GRUPO";
+        identificacao = matchLote[2];
+      }
+
+      return {
+        numeroItem:
+          item.numeroItem ?? null,
+
+        descricao:
+          item.descricao || null,
+
+        tipoParticipacao:
+          tipo,
+
+        numeroLoteGrupo:
+          identificacao,
+
+        quantidade:
+          item.quantidade ?? null,
+
+        unidadeMedida:
+          item.unidadeMedida || null,
+
+        valorUnitarioEstimado:
+          item.valorUnitarioEstimado ?? null,
+
+        valorTotal:
+          item.valorTotal ?? null
+      };
+    });
+
+    return new Response(
+      JSON.stringify(
+        {
+          sucesso: resposta.ok,
+          status: resposta.status,
+          quantidadeItens:
+            analisados.length,
+          itens: analisados
+        },
+        null,
+        2
+      ),
+      {
+        status: 200,
+        headers: {
+          "Content-Type":
+            "application/json"
+        }
+      }
+    );
+
+  } catch (erro) {
+    return new Response(
+      JSON.stringify(
+        {
+          sucesso: false,
+          erro:
+            erro?.message ||
+            String(erro)
+        },
+        null,
+        2
+      ),
+      {
+        status: 200,
+        headers: {
+          "Content-Type":
+            "application/json"
+        }
+      }
+    );
+  }
+}
+    
     return createMcpHandler(criarServidor)(request, env, ctx);
   }
 };
