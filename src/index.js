@@ -707,6 +707,109 @@ const ano = partesSequencialAno[1];
   }
 }
 
+async function buscarItensContratacao(registro) {
+  const numeroControle = registro.numero_controle_pncp;
+
+  if (!numeroControle) {
+    return [];
+  }
+
+  const partes = String(numeroControle).split("-");
+
+  if (partes.length < 3) {
+    return [];
+  }
+
+  const cnpj = partes[0];
+  const sequencialAno = partes[2];
+
+  const partesSequencialAno =
+    sequencialAno.split("/");
+
+  if (partesSequencialAno.length !== 2) {
+    return [];
+  }
+
+  const sequencial = partesSequencialAno[0];
+  const ano = partesSequencialAno[1];
+
+  const url =
+    `https://pncp.gov.br/api/pncp/v1/orgaos/${cnpj}/compras/${ano}/${sequencial}/itens`;
+
+  try {
+    const resposta = await fetch(url, {
+      method: "GET",
+      headers: {
+        "Accept": "application/json, text/plain, */*",
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
+        "Referer": "https://pncp.gov.br/",
+        "Accept-Language":
+          "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7"
+      }
+    });
+
+    if (!resposta.ok) {
+      console.error(
+        `Erro ao buscar itens ${numeroControle}: HTTP ${resposta.status}`
+      );
+
+      return [];
+    }
+
+    const dados = await resposta.json();
+
+    if (!Array.isArray(dados)) {
+      return [];
+    }
+
+    return dados;
+
+  } catch (erro) {
+    console.error(
+      `Erro ao buscar itens ${numeroControle}:`,
+      erro?.message || String(erro)
+    );
+
+    return [];
+  }
+}
+
+function analisarItensContratacao(itens = []) {
+  if (!Array.isArray(itens)) {
+    return {
+      tipoParticipacao: "ITEM",
+      itens: [],
+      itensEncontrados: []
+    };
+  }
+
+  const itensProcessados = itens.map((item) => ({
+    numeroItem: item.numeroItem ?? null,
+    descricao: item.descricao || null,
+    materialOuServico:
+      item.materialOuServicoNome ||
+      item.materialOuServico ||
+      null,
+    quantidade: item.quantidade ?? null,
+    unidadeMedida: item.unidadeMedida || null,
+    valorUnitarioEstimado:
+      item.valorUnitarioEstimado ?? null,
+    valorTotal:
+      item.valorTotal ?? null,
+    situacao:
+      item.situacaoCompraItemNome || null,
+    temResultado:
+      item.temResultado ?? false
+  }));
+
+  return {
+    tipoParticipacao: "ITEM",
+    itens: itensProcessados,
+    itensEncontrados: itensProcessados
+  };
+}
+
 async function buscarUmaPalavra({
   palavra,
   dias = 7,
