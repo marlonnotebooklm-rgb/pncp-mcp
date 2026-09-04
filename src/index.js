@@ -1472,6 +1472,63 @@ export default {
       }
     }
 
+    if (url.pathname === "/diagnostico-itens") {
+  try {
+    const resposta = await fetch(
+      "https://pncp.gov.br/api/consulta/v1/orgaos/03755477000175/compras/2026/84/itens",
+      {
+        method: "GET",
+        headers: {
+          "Accept": "application/json, text/plain, */*",
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
+          "Referer": "https://pncp.gov.br/",
+          "Accept-Language":
+            "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7"
+        }
+      }
+    );
+
+    const texto = await resposta.text();
+
+    return new Response(
+      JSON.stringify(
+        {
+          sucesso: resposta.ok,
+          status: resposta.status,
+          statusText: resposta.statusText,
+          resposta: texto.slice(0, 10000)
+        },
+        null,
+        2
+      ),
+      {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json"
+        }
+      }
+    );
+
+  } catch (erro) {
+    return new Response(
+      JSON.stringify(
+        {
+          sucesso: false,
+          erro: erro?.message || String(erro)
+        },
+        null,
+        2
+      ),
+      {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json"
+        }
+      }
+    );
+  }
+}
     return createMcpHandler(criarServidor)(request, env, ctx);
   }
 };
